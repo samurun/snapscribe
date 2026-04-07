@@ -1,5 +1,6 @@
 {
   "name": "snapscribe",
+  "description": "A transcription service for audio and video files",
   "version": "0.0.1",
   "private": true,
   "scripts": {
