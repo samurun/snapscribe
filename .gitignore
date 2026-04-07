@@ -11,6 +11,11 @@ node_modules
 .env.development.local
 .env.test.local
 .env.production.local
+.env.prod
+
+# Self-host secrets (GCP service account, etc.)
+secrets/*
+!secrets/.gitkeep
 
 # Testing
 coverage
