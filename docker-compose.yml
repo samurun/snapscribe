@@ -1,0 +1,147 @@
+name: ss
+
+# Single source of truth: `pnpm apptear:up` (or `docker compose up -d --build`)
+# brings up postgres, minio, rabbitmq, api, web, worker. The host only needs
+# Docker + Docker Compose v2 — no Node, Bun, Python, ffmpeg, or gcloud.
+#
+# Configuration is read from a `.env` file at the repo root. Start from
+# `.env.prod.example` and override what you need. See docs/ONBOARDING.md.
+
+x-shared-env: &shared-env
+  DATABASE_URL: postgres://${POSTGRES_USER:-snapscribe}:${POSTGRES_PASSWORD:-snapscribe}@postgres:5432/${POSTGRES_DB:-snapscribe}
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_SECURE: "false"
+  S3_ACCESS_KEY: ${MINIO_ROOT_USER:-snapscribe}
+  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-snapscribe-secret}
+  S3_BUCKET: ${S3_BUCKET:-snapscribe}
+  AMQP_URL: amqp://${RABBITMQ_USER:-snapscribe}:${RABBITMQ_PASSWORD:-snapscribe}@rabbitmq:5672
+  QUEUE_NAME: ${QUEUE_NAME:-jumpcut}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ss-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-snapscribe}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-snapscribe}
+      POSTGRES_DB: ${POSTGRES_DB:-snapscribe}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-snapscribe} -d ${POSTGRES_DB:-snapscribe}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: ss-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-snapscribe}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-snapscribe-secret}
+    ports:
+      - "${MINIO_HOST_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ss-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-snapscribe}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-snapscribe}
+    ports:
+      - "${RABBITMQ_HOST_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_HOST_PORT:-15672}:15672"
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+    container_name: ss-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      <<: *shared-env
+      PORT: "3001"
+    ports:
+      - "${API_HOST_PORT:-3001}:3001"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3001/').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:3001}
+    container_name: ss-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    ports:
+      - "${WEB_HOST_PORT:-3000}:3000"
+
+  worker:
+    build: ./workers
+    container_name: ss-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      <<: *shared-env
+      MAX_RETRIES: "${MAX_RETRIES:-3}"
+      TRANSCRIBER_BACKEND: ${TRANSCRIBER_BACKEND:-chirp}
+      GCP_PROJECT: ${GCP_PROJECT:-}
+      GCP_BUCKET: ${GCP_BUCKET:-}
+      GCP_LOCATION: ${GCP_LOCATION:-us-central1}
+      CHIRP_MODEL: ${CHIRP_MODEL:-chirp_2}
+      CHIRP_LANGUAGE: ${CHIRP_LANGUAGE:-th-TH}
+      CLOUDSDK_CORE_PROJECT: ${GCP_PROJECT:-}
+      # Service-account JSON mounted from ./secrets/gcp-sa.json on the host.
+      GOOGLE_APPLICATION_CREDENTIALS: /gcp/sa.json
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+    volumes:
+      - ./secrets/gcp-sa.json:/gcp/sa.json:ro
+
+volumes:
+  pgdata:
+  miniodata:
+  rabbitdata:

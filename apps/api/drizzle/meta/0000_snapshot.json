@@ -1,0 +1,140 @@
+{
+  "id": "736b8be7-adc4-4875-908e-677159c04416",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.jobs": {
+      "name": "jobs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "input_name": {
+          "name": "input_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "input_key": {
+          "name": "input_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "jumpcut_status": {
+          "name": "jumpcut_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "jumpcut_progress": {
+          "name": "jumpcut_progress",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "jumpcut_error": {
+          "name": "jumpcut_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "jumpcut_started_at": {
+          "name": "jumpcut_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "jumpcut_finished_at": {
+          "name": "jumpcut_finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transcribe_status": {
+          "name": "transcribe_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "transcribe_progress": {
+          "name": "transcribe_progress",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "transcribe_error": {
+          "name": "transcribe_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transcribe_started_at": {
+          "name": "transcribe_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transcribe_finished_at": {
+          "name": "transcribe_finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "output_video_key": {
+          "name": "output_video_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "output_srt_key": {
+          "name": "output_srt_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "output_json_key": {
+          "name": "output_json_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

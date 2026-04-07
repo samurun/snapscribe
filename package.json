@@ -1,5 +1,6 @@
 {
   "name": "snapscribe",
+  "description": "A transcription service for audio and video files",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -7,7 +8,13 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "turbo format",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "apptear:up": "docker compose up -d --build",
+    "apptear:down": "docker compose down",
+    "apptear:logs": "docker compose logs -f",
+    "apptear:ps": "docker compose ps",
+    "apptear:rebuild": "docker compose build --no-cache && docker compose up -d",
+    "apptear:reset": "docker compose down -v"
   },
   "devDependencies": {
     "@workspace/eslint-config": "workspace:*",
