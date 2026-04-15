@@ -5,7 +5,7 @@ import { publishTask, type Task } from "./queue";
 
 export type ArtifactName = "input" | "cut.srt" | "cut.json";
 
-function sanitize(name: string): string {
+export function sanitize(name: string): string {
   return name.replace(/[^\w.\-]+/g, "_") || "input.mp4";
 }
 

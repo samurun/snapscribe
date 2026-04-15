@@ -1,0 +1,140 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_call:
+
+jobs:
+  api:
+    name: API (Bun) — unit + integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: snapscribe
+          POSTGRES_PASSWORD: snapscribe
+          POSTGRES_DB: snapscribe
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U snapscribe -d snapscribe"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: snapscribe
+          MINIO_ROOT_PASSWORD: snapscribe-secret
+          MINIO_DEFAULT_BUCKETS: snapscribe-test
+        ports: ['9000:9000']
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      rabbitmq:
+        image: rabbitmq:3-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: snapscribe
+          RABBITMQ_DEFAULT_PASS: snapscribe
+        ports: ['5672:5672']
+        options: >-
+          --health-cmd "rabbitmq-diagnostics ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://snapscribe:snapscribe@localhost:5432/snapscribe
+      S3_ENDPOINT: http://localhost:9000
+      S3_ACCESS_KEY: snapscribe
+      S3_SECRET_KEY: snapscribe-secret
+      S3_BUCKET: snapscribe-test
+      AMQP_URL: amqp://snapscribe:snapscribe@localhost:5672
+      QUEUE_NAME: jumpcut-test
+      CLERK_SECRET_KEY: sk_test_ci
+      CLERK_PUBLISHABLE_KEY: pk_test_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install
+        working-directory: apps/api
+        run: bun install --frozen-lockfile
+      - name: Test
+        working-directory: apps/api
+        run: bun test
+
+  web:
+    name: Web (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web test
+
+  workers:
+    name: Workers (pytest) — unit + integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: snapscribe
+          POSTGRES_PASSWORD: snapscribe
+          POSTGRES_DB: snapscribe
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U snapscribe -d snapscribe"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: snapscribe
+          MINIO_ROOT_PASSWORD: snapscribe-secret
+          MINIO_DEFAULT_BUCKETS: snapscribe-workers-test
+        ports: ['9000:9000']
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://snapscribe:snapscribe@localhost:5432/snapscribe
+      S3_ENDPOINT: localhost:9000
+      S3_ACCESS_KEY: snapscribe
+      S3_SECRET_KEY: snapscribe-secret
+      S3_BUCKET: snapscribe-workers-test
+      AMQP_URL: amqp://snapscribe:snapscribe@localhost:5672
+      QUEUE_NAME: jumpcut-test
+      GCP_PROJECT: dummy-project
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+      - name: Install deps
+        working-directory: workers
+        run: |
+          uv venv --python 3.12
+          uv pip install -r requirements-dev.txt
+      - name: Unit tests
+        working-directory: workers
+        run: uv run pytest -q -m "not integration"
+      - name: Integration tests
+        working-directory: workers
+        run: uv run pytest -q -m integration

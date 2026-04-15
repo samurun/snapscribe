@@ -20,6 +20,11 @@ secrets/*
 # Testing
 coverage
 
+# Python
+__pycache__/
+*.pyc
+.venv/
+
 # Turbo
 .turbo
 
