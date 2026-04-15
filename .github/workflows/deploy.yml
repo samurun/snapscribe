@@ -13,6 +13,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
     env:
       DEPLOY_REF: ${{ github.event.inputs.ref || github.ref_name }}
     steps:
