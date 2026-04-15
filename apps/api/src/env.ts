@@ -14,4 +14,6 @@ export const env = {
   AMQP_URL: required("AMQP_URL"),
   QUEUE_NAME: process.env.QUEUE_NAME ?? "jumpcut",
   PORT: Number(process.env.PORT ?? 3001),
+  CLERK_SECRET_KEY: required("CLERK_SECRET_KEY"),
+  CLERK_PUBLISHABLE_KEY: required("CLERK_PUBLISHABLE_KEY"),
 };

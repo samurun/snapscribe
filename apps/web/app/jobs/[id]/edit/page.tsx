@@ -1,12 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { use, useEffect, useMemo, useRef, useState } from "react"
+import { use, useEffect, useRef, useState } from "react"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { Badge } from "@workspace/ui/components/badge"
-import { API_BASE, fetchJob, type JobView } from "@/lib/api"
+import { useApi, type JobView } from "@/lib/api"
 
 interface Segment {
   start: number
@@ -227,20 +227,21 @@ export default function EditPage({
   const [lengthPreset, setLengthPreset] = useState<LengthPreset>("short")
   const videoRef = useRef<HTMLVideoElement>(null)
   const rowRefs = useRef<Array<HTMLDivElement | null>>([])
+  const api = useApi()
+  const [cutVideoUrl, setCutVideoUrl] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const j = await fetchJob(id)
+        const j = await api.fetchJob(id)
         if (cancelled) return
         setJob(j)
         if (!j.outputs.json) {
           setError("transcript not ready yet — run transcribe first")
           return
         }
-        const res = await fetch(`${API_BASE}${j.outputs.json}`)
-        if (!res.ok) throw new Error(`fetch json: ${res.status}`)
+        const res = await api.fetchArtifact(j.outputs.json)
         const cut = (await res.json()) as CutJson
         if (cancelled) return
         setData(cut)
@@ -257,10 +258,11 @@ export default function EditPage({
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, api])
 
   // Sync video → active segment + currentTime
   useEffect(() => {
+    if (!cutVideoUrl) return
     const v = videoRef.current
     if (!v) return
     const onTime = () => {
@@ -271,7 +273,7 @@ export default function EditPage({
     }
     v.addEventListener("timeupdate", onTime)
     return () => v.removeEventListener("timeupdate", onTime)
-  }, [segments])
+  }, [segments, cutVideoUrl])
 
   // Auto-scroll active row into view
   useEffect(() => {
@@ -280,10 +282,30 @@ export default function EditPage({
     if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" })
   }, [activeIdx])
 
-  const cutVideoUrl = useMemo(() => {
+  useEffect(() => {
     const path = job?.outputs.inputVideo
-    return path ? `${API_BASE}${path}` : null
-  }, [job])
+    if (!path) {
+      setCutVideoUrl(null)
+      return
+    }
+    let url: string | null = null
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await api.fetchArtifact(path)
+        const blob = await res.blob()
+        if (cancelled) return
+        url = URL.createObjectURL(blob)
+        setCutVideoUrl(url)
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
+      }
+    })()
+    return () => {
+      cancelled = true
+      if (url) URL.revokeObjectURL(url)
+    }
+  }, [job, api])
 
   function applyLength(preset: LengthPreset) {
     setLengthPreset(preset)

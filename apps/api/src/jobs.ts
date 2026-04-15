@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { db, jobs, type JobRow } from "./db";
 import { putObject } from "./storage";
 import { publishTask, type Task } from "./queue";
@@ -9,13 +9,16 @@ function sanitize(name: string): string {
   return name.replace(/[^\w.\-]+/g, "_") || "input.mp4";
 }
 
-export async function createJob(file: File): Promise<JobRow> {
+export async function createJob(
+  userId: string,
+  file: File,
+): Promise<JobRow> {
   const safeName = sanitize(file.name);
   const buf = Buffer.from(await file.arrayBuffer());
 
   const [row] = await db
     .insert(jobs)
-    .values({ inputName: safeName, inputKey: "" })
+    .values({ userId, inputName: safeName, inputKey: "" })
     .returning();
 
   if (!row) throw new Error("failed to insert job");
@@ -32,8 +35,12 @@ export async function createJob(file: File): Promise<JobRow> {
   return updated!;
 }
 
-export async function enqueue(id: string, task: Task): Promise<JobRow | null> {
-  const job = await getJobById(id);
+export async function enqueue(
+  userId: string,
+  id: string,
+  task: Task,
+): Promise<JobRow | null> {
+  const job = await getJobById(userId, id);
   if (!job) return null;
 
   const [updated] = await db
@@ -43,37 +50,49 @@ export async function enqueue(id: string, task: Task): Promise<JobRow | null> {
       transcribeProgress: 0,
       transcribeError: null,
     })
-    .where(eq(jobs.id, id))
+    .where(and(eq(jobs.id, id), eq(jobs.userId, userId)))
     .returning();
 
   await publishTask(id, task);
   return updated!;
 }
 
-export async function getJobById(id: string): Promise<JobRow | null> {
-  const rows = await db.select().from(jobs).where(eq(jobs.id, id)).limit(1);
+export async function getJobById(
+  userId: string,
+  id: string,
+): Promise<JobRow | null> {
+  const rows = await db
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.id, id), eq(jobs.userId, userId)))
+    .limit(1);
   return rows[0] ?? null;
 }
 
-export async function listJobs(limit = 50): Promise<JobRow[]> {
+export async function listJobs(
+  userId: string,
+  limit = 50,
+): Promise<JobRow[]> {
   return await db
     .select()
     .from(jobs)
+    .where(eq(jobs.userId, userId))
     .orderBy(desc(jobs.createdAt))
     .limit(limit);
 }
 
-export async function deleteJob(id: string): Promise<boolean> {
-  const job = await getJobById(id);
+export async function deleteJob(
+  userId: string,
+  id: string,
+): Promise<boolean> {
+  const job = await getJobById(userId, id);
   if (!job) return false;
-  // Best-effort: remove every artifact we know about from MinIO before
-  // dropping the row. Failures are logged but don't block the delete.
   const keys = [job.inputKey, job.outputSrtKey, job.outputJsonKey].filter(
     (k): k is string => !!k,
   );
   const { deleteObject } = await import("./storage");
   await Promise.allSettled(keys.map((k) => deleteObject(k)));
-  await db.delete(jobs).where(eq(jobs.id, id));
+  await db.delete(jobs).where(and(eq(jobs.id, id), eq(jobs.userId, userId)));
   return true;
 }
 

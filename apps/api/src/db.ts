@@ -7,30 +7,46 @@ import {
   text,
   timestamp,
   integer,
+  index,
 } from "drizzle-orm/pg-core";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { env } from "./env";
 
 // Per-step state machine: pending → queued → running → done / error
-export const jobs = pgTable("jobs", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  inputName: text("input_name").notNull(),
-  inputKey: text("input_key").notNull(),
+export const jobs = pgTable(
+  "jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").notNull(),
+    inputName: text("input_name").notNull(),
+    inputKey: text("input_key").notNull(),
 
-  transcribeStatus: text("transcribe_status").notNull().default("pending"),
-  transcribeProgress: integer("transcribe_progress").notNull().default(0),
-  transcribeError: text("transcribe_error"),
-  transcribeStartedAt: timestamp("transcribe_started_at", { withTimezone: true }),
-  transcribeFinishedAt: timestamp("transcribe_finished_at", { withTimezone: true }),
+    transcribeStatus: text("transcribe_status").notNull().default("pending"),
+    transcribeProgress: integer("transcribe_progress").notNull().default(0),
+    transcribeError: text("transcribe_error"),
+    transcribeStartedAt: timestamp("transcribe_started_at", {
+      withTimezone: true,
+    }),
+    transcribeFinishedAt: timestamp("transcribe_finished_at", {
+      withTimezone: true,
+    }),
 
-  outputSrtKey: text("output_srt_key"),
-  outputJsonKey: text("output_json_key"),
+    outputSrtKey: text("output_srt_key"),
+    outputJsonKey: text("output_json_key"),
 
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    userIdIdx: index("jobs_user_id_idx").on(t.userId),
+    userIdCreatedAtIdx: index("jobs_user_id_created_at_idx").on(
+      t.userId,
+      t.createdAt,
+    ),
+  }),
+);
 
 export type JobRow = typeof jobs.$inferSelect;
 

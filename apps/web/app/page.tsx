@@ -3,18 +3,12 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { UserButton } from "@clerk/nextjs"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Badge } from "@workspace/ui/components/badge"
 import { Progress } from "@workspace/ui/components/progress"
-import {
-  STATUS_VARIANT,
-  deleteJob,
-  fetchJob,
-  fetchJobs,
-  runStep,
-  type JobView,
-} from "@/lib/api"
+import { STATUS_VARIANT, useApi, type JobView } from "@/lib/api"
 
 export default function Page() {
   const [history, setHistory] = useState<JobView[]>([])
@@ -25,20 +19,30 @@ export default function Page() {
   const inputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const autoOpenedRef = useRef<string | null>(null)
+  const api = useApi()
 
   const refreshHistory = useCallback(async () => {
     try {
-      setHistory(await fetchJobs())
+      setHistory(await api.fetchJobs())
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }, [])
+  }, [api])
 
   useEffect(() => {
     refreshHistory()
+  }, [refreshHistory])
+
+  const hasInFlight = history.some(
+    (j) =>
+      j.transcribe.status === "queued" || j.transcribe.status === "running",
+  )
+
+  useEffect(() => {
+    if (!hasInFlight) return
     const t = setInterval(refreshHistory, 3000)
     return () => clearInterval(t)
-  }, [refreshHistory])
+  }, [hasInFlight, refreshHistory])
 
   // Auto-open editor when the job we kicked off finishes
   useEffect(() => {
@@ -59,17 +63,7 @@ export default function Page() {
     setError(null)
     setUploading(true)
     try {
-      const fd = new FormData()
-      fd.append(
-        "file",
-        f,
-      )
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001"}/jobs`,
-        { method: "POST", body: fd },
-      )
-      if (!res.ok) throw new Error(`upload failed: ${res.status}`)
-      const created = (await res.json()) as JobView
+      const created = await api.uploadJob(f)
       setPendingJobId(created.id)
       autoOpenedRef.current = null
       refreshHistory()
@@ -84,11 +78,10 @@ export default function Page() {
   async function remove(id: string) {
     if (!confirm("Delete this job and its files?")) return
     setError(null)
-    // Optimistic remove
     setHistory((prev) => prev.filter((j) => j.id !== id))
     if (pendingJobId === id) setPendingJobId(null)
     try {
-      await deleteJob(id)
+      await api.deleteJob(id)
       refreshHistory()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -99,7 +92,7 @@ export default function Page() {
   async function rerun(id: string) {
     setError(null)
     try {
-      const job = await runStep(id, "transcribe")
+      const job = await api.runStep(id, "transcribe")
       setPendingJobId(job.id)
       autoOpenedRef.current = null
       refreshHistory()
@@ -118,7 +111,7 @@ export default function Page() {
     if (!inFlight) return
     const t = setInterval(async () => {
       try {
-        const fresh = await fetchJob(pendingJobId)
+        const fresh = await api.fetchJob(pendingJobId)
         setHistory((prev) =>
           prev.map((j) => (j.id === fresh.id ? fresh : j)),
         )
@@ -127,7 +120,7 @@ export default function Page() {
       }
     }, 1500)
     return () => clearInterval(t)
-  }, [pendingJobId, history])
+  }, [pendingJobId, history, api])
 
   return (
     <div className="min-h-svh bg-background">
@@ -140,9 +133,12 @@ export default function Page() {
             <span className="inline-block h-6 w-6 rounded-md bg-gradient-to-br from-primary to-primary/40" />
             SnapScribe
           </Link>
-          <Badge variant="outline" className="text-xs">
-            {process.env.NEXT_PUBLIC_APP_VERSION || "dev"}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="text-xs">
+              {process.env.NEXT_PUBLIC_APP_VERSION || "dev"}
+            </Badge>
+            <UserButton />
+          </div>
         </div>
       </header>
 
