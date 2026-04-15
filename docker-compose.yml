@@ -103,6 +103,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:3001}
+        NEXT_PUBLIC_APP_VERSION: ${APP_VERSION:-dev}
     container_name: ss-web
     restart: unless-stopped
     depends_on:

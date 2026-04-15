@@ -141,7 +141,7 @@ export default function Page() {
             SnapScribe
           </Link>
           <Badge variant="outline" className="text-xs">
-            local · private
+            {process.env.NEXT_PUBLIC_APP_VERSION || "dev"}
           </Badge>
         </div>
       </header>
