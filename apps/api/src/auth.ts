@@ -7,7 +7,7 @@ export const clerk = createClerkClient({
   publishableKey: env.CLERK_PUBLISHABLE_KEY,
 });
 
-async function userIdFromHeader(
+export async function userIdFromHeader(
   authHeader: string | null | undefined,
 ): Promise<string | null> {
   if (!authHeader) return null;
