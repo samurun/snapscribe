@@ -91,8 +91,8 @@ services:
       PORT: "3001"
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:?CLERK_SECRET_KEY is required}
       CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:?CLERK_PUBLISHABLE_KEY is required}
-    ports:
-      - "${API_HOST_PORT:-3001}:3001"
+    expose:
+      - "3001"
     healthcheck:
       test: ["CMD", "bun", "-e", "fetch('http://localhost:3001/').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
       interval: 10s
@@ -128,8 +128,8 @@ services:
       NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL:-/}
       NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL:-/}
       NEXT_PUBLIC_CLERK_AFTER_SIGN_OUT_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_OUT_URL:-/sign-in}
-    ports:
-      - "${WEB_HOST_PORT:-3000}:3000"
+    expose:
+      - "3000"
 
   worker:
     build: ./workers
@@ -158,7 +158,27 @@ services:
     volumes:
       - ./secrets/gcp-sa.json:/gcp/sa.json:ro
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: ss-caddy
+    restart: unless-stopped
+    depends_on:
+      - web
+      - api
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:?CADDY_DOMAIN is required}
+      CADDY_EMAIL: ${CADDY_EMAIL:-admin@snapscribe.local}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
 volumes:
   pgdata:
   miniodata:
   rabbitdata:
+  caddydata:
+  caddyconfig:
