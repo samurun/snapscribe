@@ -10,10 +10,13 @@ export interface Word {
   word: string
 }
 
-export type LengthPreset = "short" | "medium" | "long"
+export type LengthPreset = "auto" | "short" | "medium" | "long"
 
+// "auto" is a sentinel — the edit page uses the server's segments field
+// (Gemini-refined when LLM_SEGMENT_REFINER=1, otherwise rule-based) instead
+// of re-grouping from words. The other presets override on the client.
 export const LENGTH_PRESETS: Record<
-  LengthPreset,
+  Exclude<LengthPreset, "auto">,
   { maxChars: number; maxDur: number; pauseSplit: number }
 > = {
   short: { maxChars: 18, maxDur: 1.4, pauseSplit: 0.18 },
@@ -55,7 +58,7 @@ export function joinThaiWords(words: string[]): string {
 
 export function groupSegments(
   words: Word[],
-  preset: LengthPreset,
+  preset: Exclude<LengthPreset, "auto">,
 ): Segment[] {
   const { maxChars, maxDur, pauseSplit } = LENGTH_PRESETS[preset]
   const out: Segment[] = []

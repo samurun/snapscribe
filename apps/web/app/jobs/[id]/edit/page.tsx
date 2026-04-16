@@ -47,7 +47,7 @@ export default function EditPage({
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [dirty, setDirty] = useState(false)
-  const [lengthPreset, setLengthPreset] = useState<LengthPreset>("short")
+  const [lengthPreset, setLengthPreset] = useState<LengthPreset>("auto")
   const videoRef = useRef<HTMLVideoElement>(null)
   const rowRefs = useRef<Array<HTMLDivElement | null>>([])
   const api = useApi()
@@ -68,11 +68,9 @@ export default function EditPage({
         const cut = (await res.json()) as CutJson
         if (cancelled) return
         setData(cut)
-        setSegments(
-          cut.words?.length
-            ? groupSegments(cut.words, "short")
-            : (cut.segments ?? []),
-        )
+        // Default to server segments (Gemini-refined when enabled).
+        // Client presets only kick in when the user picks short/medium/long.
+        setSegments(cut.segments ?? [])
         setDirty(false)
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
@@ -131,15 +129,18 @@ export default function EditPage({
   }, [job, api])
 
   function applyLength(preset: LengthPreset) {
-    setLengthPreset(preset)
-    if (!data?.words?.length) return
     if (
       dirty &&
       !confirm("Re-grouping will discard your text edits. Continue?")
     ) {
       return
     }
-    setSegments(groupSegments(data.words, preset))
+    setLengthPreset(preset)
+    if (preset === "auto") {
+      setSegments(data?.segments ?? [])
+    } else if (data?.words?.length) {
+      setSegments(groupSegments(data.words, preset))
+    }
     setDirty(false)
   }
 
@@ -212,7 +213,7 @@ export default function EditPage({
           <div className="flex items-center gap-2">
             {data?.words?.length ? (
               <div className="border-border/60 flex items-center gap-0 rounded-md border p-0.5">
-                {(["short", "medium", "long"] as const).map((p) => (
+                {(["auto", "short", "medium", "long"] as const).map((p) => (
                   <button
                     key={p}
                     onClick={() => applyLength(p)}

@@ -15,7 +15,7 @@ import os
 from typing import Optional
 
 
-_PROMPT = """You split Thai transcripts into TikTok-style subtitle lines.
+_PROMPT = """You split Thai transcripts into very short TikTok-style subtitle lines.
 
 You receive a list of words prefixed with their index (e.g. "[0]สวัสดี [1]ครับ").
 Return ONLY {"break_after": [int,...]} — the 0-indexed word positions that END
@@ -24,15 +24,19 @@ each line. Do not include the last word's index (it's implicit).
 HARD RULES (do not violate):
 1. ALWAYS break after every occurrence of: ครับ, คับ, ค่ะ, คะ, นะครับ, นะคะ.
    If you see ครับ in the middle of the word list, that position MUST be in break_after.
-2. Never let a single line exceed ~35 Thai characters. If a phrase is long,
-   split it at a sub-phrase boundary (topic shift, conjunction, conditional).
+2. NO line may exceed 30 Thai characters. Prefer 8-18.
 3. Never split mid-compound: keep เด็กๆ, ห้องน้ำ, อันดับแรก, นะครับ together.
-4. Break BEFORE new-topic starters when they begin a new thought:
-   ห้อง, ตอน, ถ้า, เมื่อ, แต่, อันดับ, เดี๋ยว.
+4. Break BEFORE new-topic starters: ห้อง, ตอน, ถ้า, เมื่อ, แต่, และ, อันดับ,
+   เดี๋ยว, ผม, คุณ — every time, even mid-sentence.
+5. Break BEFORE modal/auxiliary starts of a clause: ต้อง, ควร, จะ-verb,
+   ได้-verb when they begin a response/verdict.
 
 SOFT PREFERENCES:
-- Aim for 10-25 characters per line. Very short titles (like "อันดับแรกครับ") are OK.
-- Every line should be a self-contained phrase, readable in 1-2 seconds.
+- Aim for 8-18 Thai characters per line — really short. Think "TikTok caption"
+  not "paragraph". Break often.
+- Each line is a self-contained phrase readable in about 1 second.
+- Single-word lines are fine if the word is a complete thought (e.g. "นาข้าว",
+  "ขอบคุณครับ").
 
 WORKED EXAMPLE
 Input:
@@ -42,11 +46,11 @@ Input:
   [27]ห้อง [28]น้ำ [29]ห้อง [30]เพื่อน [31]ถ้า [32]ไม่ [33]สนิท [34]จริง
   [35]นี่ [36]ต้อง [37]บอก [38]ว่า [39]เลี่ยง [40]ได้ [41]เลี่ยง [42]นะ [43]ครับ
 Output:
-  {"break_after": [2, 11, 14, 18, 21, 26, 30, 35, 43]}
-This yields lines:
-  จัดเทียร์ลิสต์ / ขี้ที่ไหนสบายตูดที่สุดนะครับ / อันดับแรกครับ / ห้องน้ำโรงเรียน /
-  ตอนพักเที่ยง / อันไว้ก่อนนะครับ / ห้องน้ำห้องเพื่อน / ถ้าไม่สนิทจริงนี่ /
-  ต้องบอกว่าเลี่ยงได้เลี่ยงนะครับ
+  {"break_after": [2, 11, 14, 18, 21, 26, 30, 34, 38, 43]}
+This yields these short lines:
+  จัดเทียร์ลิสต์ / ขี้ที่ไหนสบายตูดที่สุดนะครับ / อันดับแรกครับ /
+  ห้องน้ำโรงเรียน / ตอนพักเที่ยง / อันไว้ก่อนนะครับ /
+  ห้องน้ำห้องเพื่อน / ถ้าไม่สนิทจริง / นี่ต้องบอกว่า / เลี่ยงได้เลี่ยงนะครับ
 
 Indices must be strictly increasing and each within [0, last-1].
 """
