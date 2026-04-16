@@ -57,8 +57,12 @@ def _format_words(words: list[dict]) -> str:
 
 
 def _join_thai_words(ws: list[str]) -> str:
-    # Lazy import to avoid a circular import with chirp.py
-    from transcriber.chirp import join_thai_words
+    # Lazy import avoids a circular dep with chirp.py. Falls back to sibling
+    # import when chirp.py is run as a subprocess (no package context).
+    try:
+        from transcriber.chirp import join_thai_words
+    except ImportError:
+        from chirp import join_thai_words
     return join_thai_words(ws)
 
 

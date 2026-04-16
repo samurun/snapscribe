@@ -403,7 +403,10 @@ def main() -> None:
     words = words_from_results(results)
     segments = group_segments(words)
     if os.environ.get("LLM_SEGMENT_REFINER") == "1":
-        from transcriber.llm_refiner import refine_segments
+        try:
+            from transcriber.llm_refiner import refine_segments
+        except ImportError:
+            from llm_refiner import refine_segments
         print("[chirp 3/3] refining segments with Gemini...", flush=True)
         refined = refine_segments(words)
         if refined:
