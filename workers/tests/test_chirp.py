@@ -116,3 +116,50 @@ class TestGroupSegments:
         segs = chirp.group_segments(words, max_chars=5)
         for i in range(1, len(segs)):
             assert segs[i]["start"] >= segs[i - 1]["start"]
+
+    def test_defers_soft_cap_until_particle(self):
+        # Chirp returns word-level timings with ~0s gaps between Thai words,
+        # so without look-ahead the old max_chars=28 cap would split mid-phrase
+        # (e.g. "...ต้องอัน" / "ไวก่อนนะครับ"). With defaults, the sentence
+        # should finish on "ครับ" instead.
+        words = [
+            {"word": "ห้อง", "start": 19.00, "end": 19.20},
+            {"word": "น้ำ",  "start": 19.20, "end": 19.44},
+            {"word": "เขา",  "start": 19.44, "end": 19.72},
+            {"word": "ชน",   "start": 19.72, "end": 19.96},
+            {"word": "ไก่",  "start": 19.96, "end": 20.48},
+            {"word": "อัน",  "start": 20.52, "end": 20.60},
+            {"word": "นี้",  "start": 20.60, "end": 20.76},
+            {"word": "ต้อง", "start": 20.76, "end": 21.08},
+            {"word": "อัน",  "start": 21.08, "end": 21.36},
+            {"word": "ไว",   "start": 21.36, "end": 21.56},
+            {"word": "ก่อน", "start": 21.56, "end": 21.84},
+            {"word": "นะ",   "start": 21.84, "end": 21.96},
+            {"word": "ครับ", "start": 21.96, "end": 22.32},
+        ]
+        # Give max_chars headroom so defer has room to reach the particle —
+        # this test verifies the defer mechanism, not the short-subtitle defaults.
+        segs = chirp.group_segments(words, max_chars=44, hard_max_chars=60, lookahead=4)
+        assert len(segs) == 1
+        assert segs[0]["text"].endswith("ครับ")
+        assert "อันไว" in segs[0]["text"]
+
+    def test_thai_repetition_mark_stays_with_prev(self):
+        # "เด็กๆ" must not get split across a segment boundary.
+        words = [
+            {"word": "ห้อง",   "start": 10.04, "end": 10.28},
+            {"word": "เรียน",  "start": 10.28, "end": 10.56},
+            {"word": "ตอน",    "start": 10.56, "end": 10.76},
+            {"word": "อนุบาล", "start": 10.76, "end": 11.32},
+            {"word": "แหม",    "start": 11.32, "end": 11.60},
+            {"word": "ตอน",    "start": 11.60, "end": 11.80},
+            {"word": "เด็ก",   "start": 11.80, "end": 11.92},
+            {"word": "ๆ",       "start": 11.92, "end": 12.12},
+            {"word": "มึง",    "start": 12.12, "end": 12.28},
+            {"word": "ก็",     "start": 12.28, "end": 12.40},
+            {"word": "อั้น",   "start": 12.40, "end": 12.72},
+            {"word": "ครับ",   "start": 12.72, "end": 13.00},
+        ]
+        segs = chirp.group_segments(words, max_chars=44, hard_max_chars=60, lookahead=4)
+        assert len(segs) == 1
+        assert "เด็กๆ" in segs[0]["text"]

@@ -120,18 +120,42 @@ THAI_END_PARTICLES = {
 }
 
 
-def group_segments(words: list[dict], max_chars: int = 28,
+def _has_natural_break_ahead(words: list[dict], idx: int,
+                             lookahead: int, pause_split: float) -> bool:
+    """Peek the next `lookahead` words after words[idx]; return True if any
+    of them introduces a natural break (a pause >= pause_split, an ASCII
+    terminal punctuation, or a Thai end particle). Lets the soft cap defer
+    a forced split when the sentence is about to end on its own."""
+    end = min(len(words), idx + 1 + lookahead)
+    for j in range(idx + 1, end):
+        prev = words[j - 1]
+        cur = words[j]
+        if cur["start"] - prev["end"] >= pause_split:
+            return True
+        tok = cur["word"].strip()
+        if tok.endswith((".", "?", "!", "。", "？", "！")):
+            return True
+        if tok in THAI_END_PARTICLES:
+            return True
+    return False
+
+
+def group_segments(words: list[dict], max_chars: int = 20,
                    max_dur: float = 2.2,
                    pause_split: float = 0.22,
                    min_chars: int = 6,
-                   min_split_gap: float = 0.06) -> list[dict]:
+                   min_split_gap: float = 0.02,
+                   hard_max_chars: int = 30,
+                   lookahead: int = 2) -> list[dict]:
     """Group words into subtitle segments.
 
     Hard breaks: ASCII punctuation, Thai end particles, or pauses >= pause_split.
     Soft breaks (length/duration cap): instead of cutting at the last word,
     look back through the buffer and split at the word with the largest
     preceding gap — gives much more natural sentence boundaries when the
-    speaker pauses mid-thought.
+    speaker pauses mid-thought. When the soft cap fires but a natural break
+    is coming within `lookahead` words, defer the split (up to hard_max_chars)
+    so the sentence finishes on its own particle/pause.
     """
     out: list[dict] = []
     cur: list[dict] = []
@@ -173,7 +197,7 @@ def group_segments(words: list[dict], max_chars: int = 28,
                 best_i, best_gap = i, gap
         return best_i, best_gap
 
-    for w in words:
+    for i, w in enumerate(words):
         # Hard pause break (between previous word and this one)
         if cur:
             gap = w["start"] - cur[-1]["end"]
@@ -191,10 +215,14 @@ def group_segments(words: list[dict], max_chars: int = 28,
         if token in THAI_END_PARTICLES and len(cur_text()) >= min_chars:
             emit(w["end"])
             continue
-        # Soft cap: too long → split at the BEST internal gap
+        # Soft cap: too long → split at the BEST internal gap, unless a
+        # natural break is coming very soon (defer up to hard_max_chars)
         too_long = len(cur_text()) >= max_chars
         too_slow = w["end"] - cur[0]["start"] >= max_dur
         if too_long or too_slow:
+            if (len(cur_text()) < hard_max_chars
+                    and _has_natural_break_ahead(words, i, lookahead, pause_split)):
+                continue
             idx, gap = best_gap_index()
             if idx >= 1 and gap >= min_split_gap:
                 split_at(idx)
@@ -374,6 +402,12 @@ def main() -> None:
 
     words = words_from_results(results)
     segments = group_segments(words)
+    if os.environ.get("LLM_SEGMENT_REFINER") == "1":
+        from transcriber.llm_refiner import refine_segments
+        print("[chirp 3/3] refining segments with Gemini...", flush=True)
+        refined = refine_segments(words)
+        if refined:
+            segments = refined
     print(f"[chirp 3/3] {len(words)} words → {len(segments)} segments",
           flush=True)
 
