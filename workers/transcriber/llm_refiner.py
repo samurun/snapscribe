@@ -23,20 +23,24 @@ each line. Do not include the last word's index (it's implicit).
 
 HARD RULES (do not violate):
 1. ALWAYS break after every occurrence of: ครับ, คับ, ค่ะ, คะ, นะครับ, นะคะ.
-   If you see ครับ in the middle of the word list, that position MUST be in break_after.
-2. NO line may exceed 30 Thai characters. Prefer 8-18.
-3. Never split mid-compound: keep เด็กๆ, ห้องน้ำ, อันดับแรก, นะครับ together.
-4. Break BEFORE new-topic starters: ห้อง, ตอน, ถ้า, เมื่อ, แต่, และ, อันดับ,
-   เดี๋ยว, ผม, คุณ — every time, even mid-sentence.
-5. Break BEFORE modal/auxiliary starts of a clause: ต้อง, ควร, จะ-verb,
-   ได้-verb when they begin a response/verdict.
+2. Keep `ห้องน้ำ` together with its location noun in ONE line. Examples that
+   MUST stay on the same line:
+     ห้องน้ำโรงเรียน / ห้องน้ำรถทัวร์ / ห้องน้ำวัดป่า / ห้องน้ำร้านเหล้า /
+     ห้องน้ำบนทางด่วน / ห้องน้ำเขาชนไก่ / ห้องน้ำอาจารย์ / ห้องน้ำสวนสาธารณะ
+   NEVER break between `ห้องน้ำ` and the next noun(s) describing the place.
+3. Never break between `นะ` and `ครับ`/`ค่ะ`/`คะ` — they form one particle.
+4. Keep compound/onomatopoeic tokens with their phrase: เด็กๆ, แหม (stays
+   with the next phrase, not the previous), อันดับแรก, ก็ไม่, น่าจะ.
+5. NO line may be shorter than 7 characters or longer than 30. If a break
+   would create a fragment <7 (e.g. "แต่", "ผมคุณ", "ต้องมี"), attach it to
+   the next phrase instead.
+6. Break BEFORE new-topic starters: ห้อง, ตอน, ถ้า, เมื่อ, แต่, และ, อันดับ,
+   เดี๋ยว. Break BEFORE modal starts of a new clause: ต้อง, ควร.
 
 SOFT PREFERENCES:
-- Aim for 8-18 Thai characters per line — really short. Think "TikTok caption"
-  not "paragraph". Break often.
-- Each line is a self-contained phrase readable in about 1 second.
-- Single-word lines are fine if the word is a complete thought (e.g. "นาข้าว",
-  "ขอบคุณครับ").
+- Aim for 8-20 Thai characters per line — think "TikTok caption", short but
+  self-contained. Single-word lines are fine if the word is complete
+  (e.g. "นาข้าว", "ขอบคุณครับ") and >= 7 chars.
 
 WORKED EXAMPLE
 Input:
@@ -88,6 +92,91 @@ def _enforce_particle_breaks(words: list[dict], cuts: set[int]) -> set[int]:
     return cuts
 
 
+# Leading-word heuristics for the orphan merger.
+# Particles → leftover from enforce_particle_breaks → merge BACKWARD.
+_LEADING_PARTICLES = {"ครับ", "คับ", "ค่ะ", "คะ", "นะครับ", "นะคะ", "นะ"}
+# Topic starters → a new clause is beginning → merge FORWARD with next.
+_TOPIC_STARTERS = {
+    "แต่", "และ", "หรือ", "ถ้า", "เมื่อ", "เดี๋ยว", "ต้อง", "ควร",
+    "ผม", "คุณ", "ฉัน", "ผมคุณ",
+}
+_MIN_SEGMENT_CHARS = 7
+
+
+def _merge_orphans(segments: list[dict]) -> list[dict]:
+    """Post-process: absorb fragments shorter than _MIN_SEGMENT_CHARS and
+    particle-only segments. Direction matters:
+      - starts with a particle (e.g. "นะครับ" orphan) → merge BACKWARD
+      - starts with a topic starter (e.g. "แต่นี่") → merge FORWARD
+      - otherwise short → merge BACKWARD (safest default)
+    Forward-merge needs a second pass because it can only resolve once the
+    next segment has been admitted to the output.
+    """
+    if not segments:
+        return []
+
+    def first_word(text: str) -> str:
+        return text.split()[0] if text else ""
+
+    # Pass 1: decide merge direction for each segment
+    out: list[dict] = []
+    pending_forward: dict | None = None  # will attach to the NEXT segment
+    for seg in segments:
+        text = seg["text"].strip()
+        fw = first_word(text)
+        too_short = len(text) < _MIN_SEGMENT_CHARS
+        is_orphan_particle = fw in _LEADING_PARTICLES
+        is_topic_starter = fw in _TOPIC_STARTERS
+
+        if pending_forward is not None:
+            # Prepend the pending fragment to this segment
+            seg = {
+                "start": pending_forward["start"],
+                "end": seg["end"],
+                "text": _join_thai_words([pending_forward["text"].strip(), text]),
+            }
+            pending_forward = None
+            text = seg["text"].strip()
+            fw = first_word(text)
+            too_short = len(text) < _MIN_SEGMENT_CHARS
+            is_orphan_particle = fw in _LEADING_PARTICLES
+            is_topic_starter = fw in _TOPIC_STARTERS
+
+        # Don't merge BACKWARD into a segment that already ended on a
+        # Thai end particle — that was a clean sentence boundary.
+        prev_ends_closed = bool(out) and any(
+            out[-1]["text"].rstrip().endswith(p)
+            for p in ("ครับ", "ค่ะ", "คะ", "คับ")
+        )
+        if out and is_orphan_particle:
+            prev = out[-1]
+            prev["end"] = seg["end"]
+            prev["text"] = _join_thai_words([prev["text"].strip(), text])
+            continue
+        if out and too_short and not is_topic_starter and not prev_ends_closed:
+            prev = out[-1]
+            prev["end"] = seg["end"]
+            prev["text"] = _join_thai_words([prev["text"].strip(), text])
+            continue
+
+        if too_short and is_topic_starter:
+            pending_forward = dict(seg)
+            continue
+
+        out.append(dict(seg))
+
+    # Trailing fragment with nowhere to forward-merge → attach to previous
+    if pending_forward is not None and out:
+        prev = out[-1]
+        prev["end"] = pending_forward["end"]
+        prev["text"] = _join_thai_words(
+            [prev["text"].strip(), pending_forward["text"].strip()]
+        )
+    elif pending_forward is not None:
+        out.append(pending_forward)
+    return out
+
+
 def _rebuild(words: list[dict], break_after: list[int]) -> list[dict]:
     last = len(words) - 1
     cuts = {i for i in break_after if 0 <= i < last}
@@ -109,7 +198,7 @@ def _rebuild(words: list[dict], break_after: list[int]) -> list[dict]:
                 "text": text,
             })
         start = end + 1
-    return segments
+    return _merge_orphans(segments)
 
 
 def refine_segments(words: list[dict]) -> Optional[list[dict]]:
@@ -134,7 +223,7 @@ def refine_segments(words: list[dict]) -> Optional[list[dict]]:
         print("[llm_refiner] GCP_PROJECT not set; skipping", flush=True)
         return None
     location = os.environ.get("GCP_LOCATION", "us-central1")
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
     class BreakList(BaseModel):
         break_after: list[int]
@@ -148,6 +237,9 @@ def refine_segments(words: list[dict]) -> Optional[list[dict]]:
                 temperature=0.0,
                 response_mime_type="application/json",
                 response_schema=BreakList,
+                # Disable "thinking" — for a structured index-list task we want
+                # Flash's normal 2-5s latency, not 150s+ of chain-of-thought.
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
     except Exception as e:
