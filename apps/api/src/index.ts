@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
+import { openapi } from "@elysiajs/openapi";
 import { env } from "./env";
 import { bootstrap } from "./db";
 import { ensureBucket, getObjectStream } from "./storage";
@@ -21,6 +22,17 @@ await ensureBucket();
 
 const app = new Elysia()
   .use(cors())
+  .use(
+    openapi({
+      documentation: {
+        info: {
+          title: "SnapScribe API",
+          version: "1.0.0",
+          description: "Jumpcut + transcription job API",
+        },
+      },
+    }),
+  )
   .get("/", () => ({ ok: true, service: "snapscribe-api" }))
   .onError(({ error, set }) => {
     if (error instanceof Error && error.message === "unauthorized") {
