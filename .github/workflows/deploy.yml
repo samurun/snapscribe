@@ -2,6 +2,7 @@ name: Deploy to GCE
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
     inputs:
@@ -19,7 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     env:
-      DEPLOY_REF: ${{ github.event.inputs.ref || github.ref_name }}
+      # Tag push → use tag name (e.g. v0.3.0) so Caddy/badge show the release.
+      # Main push → use the commit SHA; dispatch → use user input.
+      DEPLOY_REF: ${{ github.event.inputs.ref || (startsWith(github.ref, 'refs/tags/') && github.ref_name || github.sha) }}
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
