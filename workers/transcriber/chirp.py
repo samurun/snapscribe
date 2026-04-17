@@ -254,7 +254,9 @@ def _build_config(language: str, model: str):
         model=model,
         features=cloud_speech.RecognitionFeatures(
             enable_word_time_offsets=True,
+            enable_word_confidence=True,
             enable_automatic_punctuation=True,
+            profanity_filter=False,
         ),
     )
 
@@ -321,7 +323,37 @@ def words_from_results(results) -> list[dict]:
                 "start": w.start_offset.total_seconds(),
                 "end": w.end_offset.total_seconds(),
                 "word": w.word,
+                "confidence": getattr(w, "confidence", 0.0),
             })
+    return out
+
+
+def raw_dump(results) -> list[dict]:
+    """Serialize chirp results with all alternatives + per-result boundaries
+    so we can inspect what chirp natively returns (vs what group_segments does)."""
+    out: list[dict] = []
+    for r in results:
+        end = getattr(r, "result_end_offset", None)
+        alts = []
+        for alt in getattr(r, "alternatives", []) or []:
+            words = []
+            for w in getattr(alt, "words", []) or []:
+                words.append({
+                    "start": w.start_offset.total_seconds(),
+                    "end": w.end_offset.total_seconds(),
+                    "word": w.word,
+                    "confidence": getattr(w, "confidence", 0.0),
+                })
+            alts.append({
+                "transcript": getattr(alt, "transcript", ""),
+                "confidence": getattr(alt, "confidence", 0.0),
+                "words": words,
+            })
+        out.append({
+            "result_end_offset": end.total_seconds() if end else None,
+            "language_code": getattr(r, "language_code", ""),
+            "alternatives": alts,
+        })
     return out
 
 
@@ -340,6 +372,9 @@ def main() -> None:
                    help="GCS bucket for batchRecognize (or env GCP_BUCKET)")
     p.add_argument("--srt", type=Path)
     p.add_argument("--json", dest="json_out", type=Path)
+    p.add_argument("--raw-json", dest="raw_json", type=Path,
+                   help="also write raw chirp response (all alternatives, "
+                        "per-result boundaries) to this path for inspection")
     args = p.parse_args()
 
     if not args.project:
@@ -401,7 +436,22 @@ def main() -> None:
             )
 
     words = words_from_results(results)
-    segments = group_segments(words)
+
+    mode = os.environ.get("SEGMENTER", "gemini").lower()
+    segments = None
+    if mode == "gemini":
+        try:
+            from transcriber.gemini_segmenter import segment_with_gemini
+        except ImportError:
+            from gemini_segmenter import segment_with_gemini  # type: ignore
+        print(f"[chirp 3/3] segmenting {len(words)} words via gemini…",
+              flush=True)
+        segments = segment_with_gemini(words)
+        if segments is None:
+            print("[chirp 3/3] gemini segmenter failed; falling back to rules",
+                  flush=True)
+    if segments is None:
+        segments = group_segments(words)
     print(f"[chirp 3/3] {len(words)} words → {len(segments)} segments",
           flush=True)
 
@@ -413,6 +463,17 @@ def main() -> None:
         "words": words,
         "segments": segments,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if args.raw_json:
+        raw = raw_dump(results)
+        args.raw_json.write_text(json.dumps({
+            "backend": f"chirp/{args.model}",
+            "language": args.language,
+            "duration": duration,
+            "results": raw,
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[chirp] raw response ({len(raw)} results) → {args.raw_json}",
+              flush=True)
 
     # Cost report — batch ≈ $0.016/min, sync ≈ $0.024/min
     rate_per_min = 0.016 if use_batch else 0.024
