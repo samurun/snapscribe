@@ -10,12 +10,14 @@ export interface Word {
   word: string
 }
 
-// Word-count-based presets. Each segment gets up to N "real" words — the
-// Thai repetition mark ๆ and end particles (นะครับ, นะคะ, etc.) never count
-// against the budget, so "เด็กๆ" and "นะครับ" stay with their host word.
-export type LengthPreset = 3 | 5 | 8
-export const LENGTH_PRESETS: LengthPreset[] = [3, 5, 8]
-export const DEFAULT_PRESET: LengthPreset = 5
+// Segmentation presets. "auto" uses whatever the backend (Gemini) produced.
+// Numeric presets re-group client-side: each segment gets up to N "real" words
+// — the Thai repetition mark ๆ and end particles (นะครับ, นะคะ, etc.) never
+// count against the budget, so "เด็กๆ" and "นะครับ" stay with their host word.
+export type WordCountPreset = 3 | 5 | 8
+export type LengthPreset = "auto" | WordCountPreset
+export const LENGTH_PRESETS: LengthPreset[] = ["auto", 3, 5, 8]
+export const DEFAULT_PRESET: LengthPreset = "auto"
 
 // Thai particles that mark the end of a clause — always emit a segment here.
 const THAI_END_PARTICLES = new Set([
@@ -55,7 +57,7 @@ export function joinThaiWords(words: string[]): string {
  */
 export function groupSegments(
   words: Word[],
-  wordsPerSegment: LengthPreset,
+  wordsPerSegment: WordCountPreset,
 ): Segment[] {
   const out: Segment[] = []
   let cur: Word[] = []

@@ -3,3 +3,5 @@ minio>=7.2
 psycopg[binary]>=3.2
 google-cloud-speech>=2.27
 google-cloud-storage>=2.18
+google-genai>=1.7
+pydantic>=2

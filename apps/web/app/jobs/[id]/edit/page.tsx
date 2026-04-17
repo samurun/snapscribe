@@ -71,10 +71,13 @@ export default function EditPage({
         if (cancelled) return
         setData(cut)
         setSegments(
-          cut.words?.length
-            ? groupSegments(cut.words, DEFAULT_PRESET)
-            : (cut.segments ?? []),
+          cut.segments?.length
+            ? cut.segments
+            : cut.words?.length
+              ? groupSegments(cut.words, 5)
+              : [],
         )
+        setPreset(cut.segments?.length ? "auto" : 5)
         setDirty(false)
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
@@ -140,7 +143,9 @@ export default function EditPage({
       return
     }
     setPreset(next)
-    if (data?.words?.length) {
+    if (next === "auto") {
+      setSegments(data?.segments ?? [])
+    } else if (data?.words?.length) {
       setSegments(groupSegments(data.words, next))
     }
     setDirty(false)
@@ -213,21 +218,28 @@ export default function EditPage({
             <span className="text-muted-foreground text-xs">/ editor</span>
           </div>
           <div className="flex items-center gap-2">
-            {data?.words?.length ? (
+            {data?.words?.length || data?.segments?.length ? (
               <div className="border-border/60 flex items-center gap-0 rounded-md border p-0.5">
-                {LENGTH_PRESETS.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => applyPreset(p)}
-                    className={`rounded px-2 py-1 text-xs transition-colors ${
-                      preset === p
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {p} words
-                  </button>
-                ))}
+                {LENGTH_PRESETS.map((p) => {
+                  const disabled =
+                    p === "auto"
+                      ? !data?.segments?.length
+                      : !data?.words?.length
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => applyPreset(p)}
+                      disabled={disabled}
+                      className={`rounded px-2 py-1 text-xs transition-colors ${
+                        preset === p
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      } disabled:opacity-40`}
+                    >
+                      {p === "auto" ? "Auto" : `${p} words`}
+                    </button>
+                  )
+                })}
               </div>
             ) : null}
             {dirty && (
