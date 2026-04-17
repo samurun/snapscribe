@@ -261,7 +261,7 @@ export default function EditPage({
       </header>
 
       <main className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[1.2fr_1fr]">
-        <section className="flex flex-col gap-4">
+        <section className="flex min-w-0 flex-col gap-4">
           <div className="border-border/60 bg-card relative overflow-hidden rounded-xl border shadow-sm">
             {cutVideoUrl && (
               <video
@@ -281,9 +281,9 @@ export default function EditPage({
           </div>
 
           <div className="border-border/60 bg-card rounded-xl border p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold">{job.inputName}</h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-sm font-semibold" title={job.inputName}>{job.inputName}</h2>
                 <p className="text-muted-foreground text-xs">
                   {data.language ?? "?"} ·{" "}
                   {data.duration ? `${data.duration.toFixed(1)}s` : "?"} ·{" "}
@@ -368,7 +368,7 @@ export default function EditPage({
                         patchSegment(i, { text: e.target.value })
                       }
                       onFocus={() => jumpTo(seg.start)}
-                      className="min-h-[52px] resize-none text-sm"
+                      className="min-h-[52px] w-full resize-none text-sm field-sizing-fixed wrap-anywhere"
                     />
                   </div>
                 )
