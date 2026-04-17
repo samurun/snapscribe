@@ -15,40 +15,45 @@ import os
 from typing import Optional
 
 
-_PROMPT = """You split Thai transcripts into very short TikTok-style subtitle lines.
+_PROMPT = """You split Thai transcripts into TikTok-readable phrase lines.
 
 You receive a list of words prefixed with their index (e.g. "[0]สวัสดี [1]ครับ").
 Return ONLY {"break_after": [int,...]} — the 0-indexed word positions that END
 each line. Do not include the last word's index (it's implicit).
 
-CORE RULE: Each segment = ONE complete conversational unit — a full sentence,
-a question, a list item with its verdict, or a short standalone phrase. Do NOT
-break within a single thought. A list-item pattern `<place> <verdict>ครับ`
-(e.g. `ห้องน้ำโรงเรียนตอนพักเที่ยงอันไว้ก่อนนะครับ`) is ONE segment.
+CORE RULE: Each segment is a single phrase a viewer can read in ~1-2 seconds.
+Target 15-25 Thai characters. Within a list-item sentence, SPLIT between the
+"topic/place" clause and the "verdict" clause so each fits on its own line.
 
 HARD RULES:
 1. ALWAYS break after every `ครับ`/`คับ`/`ค่ะ`/`คะ` that ends a sentence.
-   Every such occurrence in the word list MUST appear in break_after (unless
-   it's the very last word).
 2. Never split mid-compound: keep เด็กๆ, ห้องน้ำ+<place>, อันดับแรก together.
-3. Keep `ห้องน้ำ` together with its location noun(s) ON THE SAME segment:
+3. Keep `ห้องน้ำ` together with its location noun(s) on the SAME segment:
      ห้องน้ำโรงเรียน / ห้องน้ำรถทัวร์ / ห้องน้ำวัดป่า / ห้องน้ำร้านเหล้า /
      ห้องน้ำบนทางด่วน / ห้องน้ำเขาชนไก่ / ห้องน้ำอาจารย์ / ห้องน้ำสวนสาธารณะ
 4. Never split between `นะ` and `ครับ`/`ค่ะ`/`คะ` — they're one particle.
+5. Keep a `ถ้า<condition>` clause intact — don't split inside it.
 
-WHAT STAYS TOGETHER (do NOT break inside these):
-- A full question ending in `ครับ`/`นะครับ` — keep the whole question in ONE.
-- A `<place> + <verdict>ครับ` list item — one segment, even if it runs 30-50
-  characters (`ห้องน้ำโรงเรียนตอนพักเที่ยงอันไว้ก่อนนะครับ` = ONE segment).
-- A conditional clause + resolution: `ถ้า...ก็...นะครับ` → one segment.
-- Adjacent noun modifiers: `ห้องน้ำห้องเพื่อน` is one unit.
+PREFERRED SPLITS WITHIN A SENTENCE (topic → verdict):
+- BEFORE `อัน...` that starts a verdict (`อันไว้`, `อันดับ`)
+- BEFORE a mid-sentence `ถ้า` that starts a conditional (`ถ้าเลี่ยงได้...`)
+- BEFORE the verdict verb: `เลี่ยง`, `อั้น`, `ต้องลอง`, `น่าลอง`, `พอได้`
+- BEFORE `นี่ต้อง...` following a conditional clause
+- After a complete place/noun phrase before the judgement starts
 
-LENGTH: no fixed target. Segments are as long as the sentence demands. A
-typical list-item sentence ends up 20-50 Thai characters — don't force-split
-to shorten. An "อันดับแรกครับ" (13 chars) standalone is fine. A long
-`แต่นี่ถือว่า...พอได้ครับ` (38) is fine. Never shorter than a full clause.
+EXAMPLES of good topic/verdict splits:
+  ห้องน้ำโรงเรียนตอนพักเที่ยง / อันไว้ก่อนนะครับ
+  ห้องน้ำรถทัวร์ / ถ้าเลี่ยงได้ก็เลี่ยงนะครับ
+  ห้องน้ำห้องเพื่อนถ้าไม่สนิทจริง / นี่ต้องบอกว่าเลี่ยงได้เลี่ยงนะครับ
+  ห้องน้ำวัดป่า / เลี่ยงได้เลี่ยงนะครับ
+  ห้องน้ำ BTS / ต้องลองครับ
+  ทุ่งหญ้าซาวาน่า / น่าลองเหมือนกันนะครับ
+  ห้องน้ำอาจารย์ / ดีกว่าห้องน้ำนักเรียนนะครับ
 
-WORKED EXAMPLE (sentence-level, not line-level)
+LENGTH: aim 15-25 chars. 10-30 is fine. Hard cap 35. Very short stand-alones
+are OK when complete on their own (e.g. "อันดับแรกครับ" 13, "ขอบคุณครับ" 10).
+
+WORKED EXAMPLE (topic/verdict pattern)
 Input:
   [0]จัด [1]เทียร์ [2]ลิสต์ [3]ขี้ [4]ที่ [5]ไหน [6]สบาย [7]ตูด [8]ที่ [9]สุด
   [10]นะ [11]ครับ [12]อันดับ [13]แรก [14]ครับ [15]ห้อง [16]น้ำ [17]โรง [18]เรียน
@@ -56,12 +61,15 @@ Input:
   [27]ห้อง [28]น้ำ [29]ห้อง [30]เพื่อน [31]ถ้า [32]ไม่ [33]สนิท [34]จริง
   [35]นี่ [36]ต้อง [37]บอก [38]ว่า [39]เลี่ยง [40]ได้ [41]เลี่ยง [42]นะ [43]ครับ
 Output:
-  {"break_after": [11, 14, 26, 43]}
-This yields FOUR complete sentences:
-  จัดเทียร์ลิสต์ขี้ที่ไหนสบายตูดที่สุดนะครับ (title question)
-  อันดับแรกครับ (intro)
-  ห้องน้ำโรงเรียนตอนพักเที่ยงอันไว้ก่อนนะครับ (item + verdict, ONE segment)
-  ห้องน้ำห้องเพื่อนถ้าไม่สนิทจริงนี่ต้องบอกว่าเลี่ยงได้เลี่ยงนะครับ (item + verdict)
+  {"break_after": [2, 11, 14, 21, 26, 34, 43]}
+Yields:
+  จัดเทียร์ลิสต์                   (14, title chunk)
+  ขี้ที่ไหนสบายตูดที่สุดนะครับ     (28, question)
+  อันดับแรกครับ                   (13, intro)
+  ห้องน้ำโรงเรียนตอนพักเที่ยง       (25, topic)
+  อันไว้ก่อนนะครับ                 (16, verdict)
+  ห้องน้ำห้องเพื่อนถ้าไม่สนิทจริง   (31, topic+condition)
+  นี่ต้องบอกว่าเลี่ยงได้เลี่ยงนะครับ (34, verdict)
 
 Indices must be strictly increasing and each within [0, last-1].
 """

@@ -3,11 +3,9 @@ import {
   buildSrt,
   fmtClock,
   fmtSrt,
-  groupSegments,
   isThai,
   joinThaiWords,
   parseClock,
-  type Word,
 } from "../lib/transcript"
 
 describe("isThai", () => {
@@ -94,72 +92,3 @@ describe("buildSrt", () => {
   })
 })
 
-describe("groupSegments", () => {
-  const mkWord = (word: string, start: number, end: number): Word => ({
-    word,
-    start,
-    end,
-  })
-
-  it("returns empty for no words", () => {
-    expect(groupSegments([], "short")).toEqual([])
-  })
-
-  it("splits on sentence-ending punctuation", () => {
-    const words = [
-      mkWord("hello", 0, 0.5),
-      mkWord("world.", 0.5, 1),
-      mkWord("next", 1, 1.5),
-      mkWord("sentence", 1.5, 2),
-    ]
-    const segs = groupSegments(words, "long")
-    expect(segs.length).toBe(2)
-    expect(segs[0]!.text).toContain("hello")
-    expect(segs[0]!.text).toContain("world")
-    expect(segs[1]!.text).toContain("next")
-  })
-
-  it("splits on large pauses (pauseSplit threshold)", () => {
-    const words = [
-      mkWord("สวัสดีครับ", 0, 1),
-      mkWord("วันนี้อากาศดี", 2, 3),
-    ]
-    const segs = groupSegments(words, "short")
-    expect(segs.length).toBe(2)
-  })
-
-  it("splits on Thai end particle", () => {
-    const words = [
-      mkWord("สวัสดี", 0, 0.5),
-      mkWord("ครับ", 0.5, 1),
-      mkWord("วันนี้", 1.05, 1.5),
-      mkWord("ดีจัง", 1.5, 2),
-    ]
-    const segs = groupSegments(words, "long")
-    expect(segs.length).toBeGreaterThanOrEqual(2)
-    expect(segs[0]!.text).toContain("ครับ")
-  })
-
-  it("respects maxChars on short preset", () => {
-    const words = Array.from({ length: 20 }, (_, i) =>
-      mkWord(`word${i}`, i * 0.1, i * 0.1 + 0.09),
-    )
-    const segs = groupSegments(words, "short")
-    // short preset maxChars = 18 — should split multiple times
-    expect(segs.length).toBeGreaterThan(1)
-  })
-
-  it("segments have monotonically non-decreasing start times", () => {
-    const words = [
-      mkWord("a", 0, 0.3),
-      mkWord("b", 0.3, 0.6),
-      mkWord("c.", 0.6, 0.9),
-      mkWord("d", 0.9, 1.2),
-      mkWord("e", 1.2, 1.5),
-    ]
-    const segs = groupSegments(words, "medium")
-    for (let i = 1; i < segs.length; i++) {
-      expect(segs[i]!.start).toBeGreaterThanOrEqual(segs[i - 1]!.start)
-    }
-  })
-})

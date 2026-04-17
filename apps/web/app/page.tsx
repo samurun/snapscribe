@@ -19,6 +19,11 @@ export default function Page() {
   const inputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const autoOpenedRef = useRef<string | null>(null)
+  // Only auto-open the editor after we've seen this job's status transition
+  // through queued/running since arming. Without this latch a stale "done"
+  // snapshot right after Re-run would fire a navigation before the worker
+  // picks the job back up.
+  const sawInFlightRef = useRef<string | null>(null)
   const api = useApi()
 
   const refreshHistory = useCallback(async () => {
@@ -34,8 +39,7 @@ export default function Page() {
   }, [refreshHistory])
 
   const hasInFlight = history.some(
-    (j) =>
-      j.transcribe.status === "queued" || j.transcribe.status === "running",
+    (j) => j.transcribe.status === "queued" || j.transcribe.status === "running"
   )
 
   useEffect(() => {
@@ -44,15 +48,24 @@ export default function Page() {
     return () => clearInterval(t)
   }, [hasInFlight, refreshHistory])
 
-  // Auto-open editor when the job we kicked off finishes
+  // Auto-open editor when the job we kicked off finishes. Only fires after
+  // we've observed the job enter queued/running since arming, so a stale
+  // "done" snapshot (e.g. right after Re-run, before the worker picks it up)
+  // doesn't trigger an unwanted navigation.
   useEffect(() => {
     if (!pendingJobId) return
     const job = history.find((j) => j.id === pendingJobId)
+    if (!job) return
+    const status = job.transcribe.status
+    if (status === "queued" || status === "running") {
+      sawInFlightRef.current = job.id
+      return
+    }
     if (
-      job &&
-      job.transcribe.status === "done" &&
+      status === "done" &&
       job.outputs.json &&
-      autoOpenedRef.current !== job.id
+      autoOpenedRef.current !== job.id &&
+      sawInFlightRef.current === job.id
     ) {
       autoOpenedRef.current = job.id
       router.push(`/jobs/${job.id}/edit`)
@@ -66,6 +79,7 @@ export default function Page() {
       const created = await api.uploadJob(f)
       setPendingJobId(created.id)
       autoOpenedRef.current = null
+      sawInFlightRef.current = null
       refreshHistory()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -95,6 +109,7 @@ export default function Page() {
       const job = await api.runStep(id, "transcribe")
       setPendingJobId(job.id)
       autoOpenedRef.current = null
+      sawInFlightRef.current = null
       refreshHistory()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -112,9 +127,7 @@ export default function Page() {
     const t = setInterval(async () => {
       try {
         const fresh = await api.fetchJob(pendingJobId)
-        setHistory((prev) =>
-          prev.map((j) => (j.id === fresh.id ? fresh : j)),
-        )
+        setHistory((prev) => prev.map((j) => (j.id === fresh.id ? fresh : j)))
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
       }

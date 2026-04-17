@@ -10,9 +10,7 @@ import { useApi, type JobView } from "@/lib/api"
 import {
   buildSrt,
   fmtClock,
-  groupSegments,
   parseClock,
-  type LengthPreset,
   type Segment,
   type Word,
 } from "@/lib/transcript"
@@ -47,7 +45,6 @@ export default function EditPage({
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [dirty, setDirty] = useState(false)
-  const [lengthPreset, setLengthPreset] = useState<LengthPreset>("auto")
   const videoRef = useRef<HTMLVideoElement>(null)
   const rowRefs = useRef<Array<HTMLDivElement | null>>([])
   const api = useApi()
@@ -128,19 +125,14 @@ export default function EditPage({
     }
   }, [job, api])
 
-  function applyLength(preset: LengthPreset) {
+  function resetSegments() {
     if (
       dirty &&
-      !confirm("Re-grouping will discard your text edits. Continue?")
+      !confirm("Reset will discard your text edits. Continue?")
     ) {
       return
     }
-    setLengthPreset(preset)
-    if (preset === "auto") {
-      setSegments(data?.segments ?? [])
-    } else if (data?.words?.length) {
-      setSegments(groupSegments(data.words, preset))
-    }
+    setSegments(data?.segments ?? [])
     setDirty(false)
   }
 
@@ -211,22 +203,15 @@ export default function EditPage({
             <span className="text-muted-foreground text-xs">/ editor</span>
           </div>
           <div className="flex items-center gap-2">
-            {data?.words?.length ? (
-              <div className="border-border/60 flex items-center gap-0 rounded-md border p-0.5">
-                {(["auto", "short", "medium", "long"] as const).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => applyLength(p)}
-                    className={`rounded px-2 py-1 text-xs capitalize transition-colors ${
-                      lengthPreset === p
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
+            {dirty && data?.segments?.length ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={resetSegments}
+                className="text-xs"
+              >
+                Reset
+              </Button>
             ) : null}
             {dirty && (
               <Badge variant="outline" className="text-xs">
