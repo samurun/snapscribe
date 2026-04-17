@@ -10,6 +10,21 @@ export interface Word {
   word: string
 }
 
+// Word-count-based presets. Each segment gets up to N "real" words — the
+// Thai repetition mark ๆ and end particles (นะครับ, นะคะ, etc.) never count
+// against the budget, so "เด็กๆ" and "นะครับ" stay with their host word.
+export type LengthPreset = 3 | 5 | 8
+export const LENGTH_PRESETS: LengthPreset[] = [3, 5, 8]
+export const DEFAULT_PRESET: LengthPreset = 5
+
+// Thai particles that mark the end of a clause — always emit a segment here.
+const THAI_END_PARTICLES = new Set([
+  "ครับ", "คับ", "ค่ะ", "คะ", "ครับผม",
+])
+// Tokens that must never start a new segment — they stick to the previous
+// word (Thai repetition mark, trailing "นะ" before particle).
+const STICKY_TRAILING = new Set(["ๆ", "นะ"])
+
 export function isThai(ch: string): boolean {
   const code = ch.charCodeAt(0)
   return code >= 0x0e00 && code <= 0x0e7f
@@ -30,6 +45,57 @@ export function joinThaiWords(words: string[]): string {
     else if (isThai(prev) && isThai(cur)) out += w
     else out += " " + w
   }
+  return out
+}
+
+/**
+ * Group words into segments using a word-count budget. Hard-breaks at Thai
+ * end particles (ครับ/ค่ะ/คะ) and sticks ๆ / นะ to the preceding word so
+ * compounds like "เด็กๆ" and "นะครับ" stay intact.
+ */
+export function groupSegments(
+  words: Word[],
+  wordsPerSegment: LengthPreset,
+): Segment[] {
+  const out: Segment[] = []
+  let cur: Word[] = []
+  let realCount = 0
+
+  const emit = () => {
+    if (!cur.length) return
+    const text = joinThaiWords(cur.map((w) => w.word)).trim()
+    if (text) {
+      out.push({ start: cur[0]!.start, end: cur[cur.length - 1]!.end, text })
+    }
+    cur = []
+    realCount = 0
+  }
+
+  for (const w of words) {
+    const token = w.word.trim()
+    const isSticky = STICKY_TRAILING.has(token)
+    const isEndParticle = THAI_END_PARTICLES.has(token)
+    // Emit BEFORE this word if the budget is full and this word starts a new
+    // real chunk. Sticky trailers (ๆ, นะ) and end particles (ครับ/ค่ะ/คะ)
+    // always attach to the current segment instead of starting a new one.
+    if (
+      cur.length > 0 &&
+      realCount >= wordsPerSegment &&
+      !isSticky &&
+      !isEndParticle
+    ) {
+      emit()
+    }
+    cur.push(w)
+    if (!isSticky && !isEndParticle) {
+      realCount++
+    }
+    // Hard break after a sentence-ending particle.
+    if (isEndParticle) {
+      emit()
+    }
+  }
+  emit()
   return out
 }
 

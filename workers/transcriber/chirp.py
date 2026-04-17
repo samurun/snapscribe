@@ -140,13 +140,13 @@ def _has_natural_break_ahead(words: list[dict], idx: int,
     return False
 
 
-def group_segments(words: list[dict], max_chars: int = 20,
-                   max_dur: float = 2.2,
+def group_segments(words: list[dict], max_chars: int = 28,
+                   max_dur: float = 2.5,
                    pause_split: float = 0.22,
                    min_chars: int = 6,
-                   min_split_gap: float = 0.02,
-                   hard_max_chars: int = 30,
-                   lookahead: int = 2) -> list[dict]:
+                   min_split_gap: float = 0.06,
+                   hard_max_chars: int = 44,
+                   lookahead: int = 3) -> list[dict]:
     """Group words into subtitle segments.
 
     Hard breaks: ASCII punctuation, Thai end particles, or pauses >= pause_split.
@@ -402,15 +402,6 @@ def main() -> None:
 
     words = words_from_results(results)
     segments = group_segments(words)
-    if os.environ.get("LLM_SEGMENT_REFINER") == "1":
-        try:
-            from transcriber.llm_refiner import refine_segments
-        except ImportError:
-            from llm_refiner import refine_segments
-        print("[chirp 3/3] refining segments with Gemini...", flush=True)
-        refined = refine_segments(words)
-        if refined:
-            segments = refined
     print(f"[chirp 3/3] {len(words)} words → {len(segments)} segments",
           flush=True)
 

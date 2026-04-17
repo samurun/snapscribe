@@ -3,9 +3,11 @@ import {
   buildSrt,
   fmtClock,
   fmtSrt,
+  groupSegments,
   isThai,
   joinThaiWords,
   parseClock,
+  type Word,
 } from "../lib/transcript"
 
 describe("isThai", () => {
@@ -89,6 +91,72 @@ describe("buildSrt", () => {
     const srt = buildSrt([{ start: 0, end: 1, text: "  hi  " }])
     expect(srt).toContain("hi")
     expect(srt).not.toContain("  hi  ")
+  })
+})
+
+describe("groupSegments", () => {
+  const mk = (word: string, start: number, end: number): Word => ({
+    word,
+    start,
+    end,
+  })
+
+  it("returns empty for no words", () => {
+    expect(groupSegments([], 5)).toEqual([])
+  })
+
+  it("splits after every ครับ regardless of word count", () => {
+    const words = [
+      mk("สวัสดี", 0, 0.3),
+      mk("ครับ", 0.3, 0.5),
+      mk("วันนี้", 0.5, 0.8),
+      mk("ดี", 0.8, 1),
+      mk("ครับ", 1, 1.2),
+    ]
+    const segs = groupSegments(words, 8)
+    expect(segs).toHaveLength(2)
+    expect(segs[0]!.text).toBe("สวัสดีครับ")
+    expect(segs[1]!.text).toBe("วันนี้ดีครับ")
+  })
+
+  it("breaks at the word-count budget", () => {
+    const words = [
+      mk("หนึ่ง", 0, 0.2),
+      mk("สอง", 0.2, 0.4),
+      mk("สาม", 0.4, 0.6),
+      mk("สี่", 0.6, 0.8),
+      mk("ห้า", 0.8, 1),
+      mk("หก", 1, 1.2),
+    ]
+    const segs = groupSegments(words, 3)
+    expect(segs).toHaveLength(2)
+    expect(segs[0]!.text).toBe("หนึ่งสองสาม")
+    expect(segs[1]!.text).toBe("สี่ห้าหก")
+  })
+
+  it("keeps ๆ glued to the previous word", () => {
+    const words = [
+      mk("เด็ก", 0, 0.2),
+      mk("ๆ", 0.2, 0.3),
+      mk("น่ารัก", 0.3, 0.6),
+    ]
+    // Budget of 3 — ๆ doesn't count against the budget, so all three
+    // tokens fit in one segment with "เด็กๆ" kept intact.
+    const segs = groupSegments(words, 3)
+    expect(segs).toHaveLength(1)
+    expect(segs[0]!.text).toContain("เด็กๆ")
+  })
+
+  it("timestamps come from the words at segment boundaries", () => {
+    const words = [
+      mk("หนึ่ง", 0.1, 0.3),
+      mk("สอง", 0.3, 0.6),
+      mk("ครับ", 0.6, 0.9),
+    ]
+    const segs = groupSegments(words, 5)
+    expect(segs).toHaveLength(1)
+    expect(segs[0]!.start).toBe(0.1)
+    expect(segs[0]!.end).toBe(0.9)
   })
 })
 

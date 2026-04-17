@@ -8,9 +8,13 @@ import { Textarea } from "@workspace/ui/components/textarea"
 import { Badge } from "@workspace/ui/components/badge"
 import { useApi, type JobView } from "@/lib/api"
 import {
+  DEFAULT_PRESET,
+  LENGTH_PRESETS,
   buildSrt,
   fmtClock,
+  groupSegments,
   parseClock,
+  type LengthPreset,
   type Segment,
   type Word,
 } from "@/lib/transcript"
@@ -45,6 +49,7 @@ export default function EditPage({
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [dirty, setDirty] = useState(false)
+  const [preset, setPreset] = useState<LengthPreset>(DEFAULT_PRESET)
   const videoRef = useRef<HTMLVideoElement>(null)
   const rowRefs = useRef<Array<HTMLDivElement | null>>([])
   const api = useApi()
@@ -65,9 +70,11 @@ export default function EditPage({
         const cut = (await res.json()) as CutJson
         if (cancelled) return
         setData(cut)
-        // Default to server segments (Gemini-refined when enabled).
-        // Client presets only kick in when the user picks short/medium/long.
-        setSegments(cut.segments ?? [])
+        setSegments(
+          cut.words?.length
+            ? groupSegments(cut.words, DEFAULT_PRESET)
+            : (cut.segments ?? []),
+        )
         setDirty(false)
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
@@ -125,14 +132,17 @@ export default function EditPage({
     }
   }, [job, api])
 
-  function resetSegments() {
+  function applyPreset(next: LengthPreset) {
     if (
       dirty &&
-      !confirm("Reset will discard your text edits. Continue?")
+      !confirm("Re-grouping will discard your text edits. Continue?")
     ) {
       return
     }
-    setSegments(data?.segments ?? [])
+    setPreset(next)
+    if (data?.words?.length) {
+      setSegments(groupSegments(data.words, next))
+    }
     setDirty(false)
   }
 
@@ -203,15 +213,22 @@ export default function EditPage({
             <span className="text-muted-foreground text-xs">/ editor</span>
           </div>
           <div className="flex items-center gap-2">
-            {dirty && data?.segments?.length ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={resetSegments}
-                className="text-xs"
-              >
-                Reset
-              </Button>
+            {data?.words?.length ? (
+              <div className="border-border/60 flex items-center gap-0 rounded-md border p-0.5">
+                {LENGTH_PRESETS.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => applyPreset(p)}
+                    className={`rounded px-2 py-1 text-xs transition-colors ${
+                      preset === p
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {p} words
+                  </button>
+                ))}
+              </div>
             ) : null}
             {dirty && (
               <Badge variant="outline" className="text-xs">
