@@ -203,6 +203,9 @@ export default function Page() {
             <p className="text-xs text-muted-foreground">
               MP4 · MOV · WebM — press Transcribe in History when ready
             </p>
+            <p className="text-xs text-muted-foreground">
+              Max upload size: 400MB
+            </p>
             <Input
               ref={inputRef}
               type="file"

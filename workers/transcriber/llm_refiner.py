@@ -252,9 +252,11 @@ def refine_segments(words: list[dict]) -> Optional[list[dict]]:
                 temperature=0.0,
                 response_mime_type="application/json",
                 response_schema=BreakList,
-                # Disable "thinking" — for a structured index-list task we want
-                # Flash's normal 2-5s latency, not 150s+ of chain-of-thought.
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                # Give Flash a small thinking budget so it actually follows
+                # the topic/verdict split rules in the prompt instead of
+                # skimming them. 0 was too fast+sloppy; unlimited ran 150s.
+                # 512 tokens ≈ 10-15s — good accuracy/latency balance.
+                thinking_config=types.ThinkingConfig(thinking_budget=512),
             ),
         )
     except Exception as e:

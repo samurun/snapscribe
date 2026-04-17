@@ -243,7 +243,7 @@ export default function EditPage({
               />
             )}
             {liveCaption && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-14 flex justify-center px-4">
+              <div className="pointer-events-none absolute inset-x-0 bottom-10 flex justify-center px-4">
                 <div className="max-w-[85%] rounded-md bg-black/75 px-4 py-2 text-center text-base font-medium text-white shadow-lg backdrop-blur-sm">
                   {liveCaption}
                 </div>

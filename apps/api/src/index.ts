@@ -127,7 +127,13 @@ const app = new Elysia()
         }
       }),
   )
-  .listen(env.PORT);
+  .listen({
+    port: env.PORT,
+    // Bun default is 128MB — too small for video uploads.
+    // Override with MAX_UPLOAD_BYTES env if needed.
+    maxRequestBodySize:
+      Number(process.env.MAX_UPLOAD_BYTES) || 400 * 1024 * 1024, // 400MB
+  });
 
 console.log(
   `🦊 snapscribe-api running at ${app.server?.hostname}:${app.server?.port}`,
